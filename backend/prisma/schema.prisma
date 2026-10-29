@@ -1,0 +1,323 @@
+// Real-Time Lecture Feedback & Polling System — data model.
+// PostgreSQL is the source of truth; Socket.IO events are only notifications.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  LECTURER
+  ADMIN
+}
+
+enum CourseRole {
+  LECTURER
+  STUDENT
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  PAUSED
+  ENDED
+}
+
+enum SessionAccessPolicy {
+  ENROLLED_ONLY
+  ANY_SIGNED_IN
+}
+
+enum PollType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  RATING
+}
+
+enum PollStatus {
+  DRAFT
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum ResultsVisibility {
+  HIDDEN
+  LIVE
+  AFTER_CLOSE
+}
+
+enum FeedbackDimension {
+  CLARITY
+  PACE
+  ENGAGEMENT
+  MATERIALS
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  displayName  String   @db.VarChar(100)
+  role         Role     @default(STUDENT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  ownedCourses       Course[]
+  enrolments         Enrolment[]
+  createdSessions    LectureSession[]
+  createdPolls       Poll[]
+  attendance         AttendanceRecord[]
+  pollParticipations PollParticipation[]
+  pollResponses      PollResponse[]
+  feedbackParticipations FeedbackParticipation[]
+  feedbackEntries    FeedbackEntry[]
+  resetTokens        PasswordResetToken[]
+  auditLogs          AuditLog[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(6)
+  usedAt    DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Course {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(32)
+  title       String   @db.VarChar(160)
+  description String?  @db.VarChar(2000)
+  ownerId     String   @db.Uuid
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  owner     User             @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  enrolments Enrolment[]
+  sessions  LectureSession[]
+
+  @@index([ownerId])
+}
+
+model Enrolment {
+  courseId  String     @db.Uuid
+  userId    String     @db.Uuid
+  role      CourseRole
+  createdAt DateTime   @default(now()) @db.Timestamptz(6)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, userId])
+  @@index([userId])
+}
+
+model LectureSession {
+  id                  String              @id @default(uuid()) @db.Uuid
+  courseId            String              @db.Uuid
+  title               String              @db.VarChar(160)
+  description         String?             @db.VarChar(2000)
+  status              SessionStatus       @default(SCHEDULED)
+  accessPolicy        SessionAccessPolicy @default(ENROLLED_ONLY)
+  // Lookup uses the keyed hash; the encrypted copy lets authorised lecturers re-display the code.
+  joinCodeHash        String?             @unique
+  joinCodeEnc         String?
+  joinCodeExpiresAt   DateTime?           @db.Timestamptz(6)
+  feedbackEnabled     Boolean             @default(true)
+  scheduledFor        DateTime?           @db.Timestamptz(6)
+  startedAt           DateTime?           @db.Timestamptz(6)
+  endedAt             DateTime?           @db.Timestamptz(6)
+  createdById         String              @db.Uuid
+  createdAt           DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime            @updatedAt @db.Timestamptz(6)
+
+  course     Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdBy  User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  polls      Poll[]
+  attendance AttendanceRecord[]
+  feedbackParticipations FeedbackParticipation[]
+  feedbackEntries FeedbackEntry[]
+
+  @@index([courseId, status])
+  @@index([status, scheduledFor])
+}
+
+// Attendance: "this user joined this session". Never linked to any answer data.
+model AttendanceRecord {
+  sessionId String   @db.Uuid
+  userId    String   @db.Uuid
+  joinedAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  session LectureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId])
+  @@index([userId])
+}
+
+model Poll {
+  id                  String            @id @default(uuid()) @db.Uuid
+  sessionId           String            @db.Uuid
+  question            String            @db.VarChar(500)
+  type                PollType
+  status              PollStatus        @default(DRAFT)
+  isAnonymous         Boolean           @default(true)
+  allowResponseUpdate Boolean           @default(false)
+  isRequired          Boolean           @default(false)
+  resultsVisibility   ResultsVisibility @default(AFTER_CLOSE)
+  resultsRevealed     Boolean           @default(false)
+  minSelections       Int?
+  maxSelections       Int?
+  ratingMin           Int?
+  ratingMax           Int?
+  durationSeconds     Int?
+  openedAt            DateTime?         @db.Timestamptz(6)
+  closesAt            DateTime?         @db.Timestamptz(6)
+  remainingMs         Int?
+  closedAt            DateTime?         @db.Timestamptz(6)
+  position            Int               @default(0)
+  createdById         String            @db.Uuid
+  createdAt           DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(6)
+
+  session        LectureSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdBy      User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  options        PollOption[]
+  participations PollParticipation[]
+  responses      PollResponse[]
+
+  @@index([sessionId, status])
+  @@index([status, closesAt])
+}
+
+model PollOption {
+  id        String @id @default(uuid()) @db.Uuid
+  pollId    String @db.Uuid
+  label     String @db.VarChar(300)
+  position  Int
+
+  poll      Poll                 @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  selections PollResponseOption[]
+
+  @@unique([pollId, position])
+  @@unique([id, pollId])
+}
+
+// Records THAT a user responded (for one-response-per-user and response-rate). Holds no answer data.
+model PollParticipation {
+  id             String   @id @default(uuid()) @db.Uuid
+  pollId         String   @db.Uuid
+  userId         String   @db.Uuid
+  idempotencyKey String   @db.VarChar(100)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([userId])
+}
+
+// Holds the answer. userId is set ONLY for identified polls. Anonymous rows carry no user id,
+// no timestamps, and random UUID keys so they cannot be re-linked through ordering or timing.
+model PollResponse {
+  id          String    @id @default(uuid()) @db.Uuid
+  pollId      String    @db.Uuid
+  userId      String?   @db.Uuid
+  ratingValue Int?
+  submittedAt DateTime? @db.Timestamptz(6)
+
+  poll    Poll                 @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user    User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  options PollResponseOption[]
+
+  @@unique([id, pollId])
+  @@index([pollId])
+}
+
+model PollResponseOption {
+  responseId String @db.Uuid
+  optionId   String @db.Uuid
+  pollId     String @db.Uuid
+
+  response PollResponse @relation(fields: [responseId, pollId], references: [id, pollId], onDelete: Cascade)
+  option   PollOption   @relation(fields: [optionId, pollId], references: [id, pollId], onDelete: Cascade)
+
+  @@id([responseId, optionId])
+  @@index([optionId])
+}
+
+model FeedbackParticipation {
+  sessionId String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  session LectureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId])
+}
+
+model FeedbackEntry {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @db.Uuid
+  userId    String?   @db.Uuid
+  comment   String?   @db.VarChar(3000)
+  isHidden  Boolean   @default(false)
+  createdAt DateTime? @db.Timestamptz(6)
+
+  session LectureSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ratings FeedbackRating[]
+
+  @@index([sessionId])
+}
+
+model FeedbackRating {
+  entryId   String            @db.Uuid
+  dimension FeedbackDimension
+  value     Int
+
+  entry FeedbackEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@id([entryId, dimension])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String   @db.VarChar(100)
+  targetType String?  @db.VarChar(80)
+  targetId   String?  @db.Uuid
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([action])
+}
+
+// Express session store (connect-pg-simple). Declared here so Prisma migrations own the table.
+model HttpSession {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire])
+  @@map("user_sessions")
+}

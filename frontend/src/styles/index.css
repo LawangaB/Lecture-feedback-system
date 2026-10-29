@@ -1,0 +1,142 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens: one place for colour, radius, type and focus. Components use semantic names only. */
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ring: var(--ring);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-pop: 0 10px 30px -10px rgb(15 23 42 / 0.25);
+}
+
+:root {
+  --background: #f3f7f5;
+  --surface: #ffffff;
+  --surface-muted: #edf3f0;
+  --foreground: #19312f;
+  --muted-foreground: #5b716e;
+  --border: #dbe6e1;
+  --primary: #087c72;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e0f3ee;
+  --success: #218653;
+  --success-soft: #e5f5eb;
+  --warning: #a15c07;
+  --warning-soft: #fdf3e0;
+  --danger: #b84736;
+  --danger-soft: #fbece8;
+  --ring: #087c72;
+  --accent: #dc7554;
+}
+
+.dark {
+  --background: #101918;
+  --surface: #182321;
+  --surface-muted: #202e2b;
+  --foreground: #e8f0ec;
+  --muted-foreground: #a1b4ad;
+  --border: #30413c;
+  --primary: #5bd0b6;
+  --primary-foreground: #10231f;
+  --primary-soft: #1d3933;
+  --success: #73d59b;
+  --success-soft: #183326;
+  --warning: #fbbf24;
+  --warning-soft: #382c16;
+  --danger: #ff9480;
+  --danger-soft: #3d211d;
+  --ring: #5bd0b6;
+  --accent: #f39a78;
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background-color: var(--color-background);
+    background-image: linear-gradient(rgb(8 124 114 / 0.025) 1px, transparent 1px), linear-gradient(90deg, rgb(8 124 114 / 0.025) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    padding-top: env(safe-area-inset-top);
+  }
+  /* Visible focus for every interactive element (WCAG 2.4.7 / 2.4.11). */
+  :where(a, button, input, select, textarea, summary, [role='tab'], [role='radio'], [role='checkbox'], [role='switch']):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  h1, h2, h3 { letter-spacing: 0; }
+}
+
+.app-enter { animation: app-enter 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.stat-tile { animation: tile-enter 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.stat-tile:nth-child(2) { animation-delay: 45ms; }
+.stat-tile:nth-child(3) { animation-delay: 90ms; }
+.stat-tile:nth-child(4) { animation-delay: 135ms; }
+.auth-visual-panel {
+  background-color: #173d38;
+  background-image: linear-gradient(180deg, rgb(10 35 33 / 0.3) 0%, rgb(10 35 33 / 0.48) 42%, rgb(10 35 33 / 0.88) 100%), linear-gradient(90deg, rgb(10 35 33 / 0.2), transparent 72%), url('/campus-learning.jpg');
+  background-position: center;
+  background-size: cover;
+}
+.join-lecture-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgb(8 124 114 / 0.22);
+  background: linear-gradient(112deg, #0b766d 0%, #155e5c 58%, #294e4a 100%);
+  color: #ffffff;
+}
+.join-lecture-band::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 auto;
+  width: min(36%, 19rem);
+  background: repeating-linear-gradient(135deg, transparent 0 13px, rgb(255 255 255 / 0.065) 13px 14px);
+  content: '';
+  mask-image: linear-gradient(90deg, transparent, #000 80%);
+  pointer-events: none;
+}
+.join-lecture-band .text-muted-foreground { color: rgb(255 255 255 / 0.76); }
+.join-lecture-band input { border-color: rgb(255 255 255 / 0.45); }
+
+@keyframes app-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes tile-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Respect reduced motion everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+.skip-link { position: absolute; left: -9999px; top: 0; z-index: 100; background: var(--color-primary); color: var(--color-primary-foreground); padding: 0.5rem 1rem; border-radius: 0 0 0.5rem 0; }
+.skip-link:focus { left: 0; }
+.tabular { font-variant-numeric: tabular-nums; }
