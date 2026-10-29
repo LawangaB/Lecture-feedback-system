@@ -1,93 +1,105 @@
 # Real-Time Lecture Feedback & Polling System
 
-Lecturers run live polls and collect feedback; students join from any device with a code or QR link; results stream to the lecturer in real time. React + TypeScript SPA, Express + Socket.IO API, PostgreSQL via Prisma.
+A web application for lecturers to organise courses, run interactive lecture sessions, create live polls, and collect feedback. Students join a session with a code or QR link and participate from their own devices. Poll activity and attendance update live for the lecturer.
 
-> **Status:** a coherent, working vertical slice covering authentication, courses, sessions, polls (single / multiple / rating), real-time delivery, feedback, reports/exports and administration. See [Implementation status](#implementation-status) for exactly what was verified and what was **not** — please read it before deploying.
+## What the application does
 
-## Quick start (local development)
+- **Authentication and roles:** account registration and login, profile and password management, and separate Student, Lecturer, and Administrator capabilities.
+- **Courses and enrolments:** create and update courses, archive them, add existing student or lecturer accounts by email, and remove students from a course.
+- **Lecture sessions:** schedule sessions, configure who can join and whether feedback is enabled, then start, pause, resume, or end a session. Share a time-limited join code or QR link and rotate a code when needed.
+- **Live polls:** build single-choice, multiple-choice, and rating polls. Configure response limits, anonymity, answer changes, duration, and results visibility. Manage draft polls and control the open, paused, closed, and results-revealed states.
+- **Participation and feedback:** students submit poll answers and rate lecture clarity, pace, engagement, and materials, with an optional comment. Lecturers see live participation and feedback summaries; individual comments can be hidden.
+- **Reports and administration:** review session reports, export poll results or feedback as CSV, manage user roles and account activation, and inspect audit events.
 
-Prerequisites: Node.js 22 LTS, Docker (or any PostgreSQL 16).
+The frontend is a React + TypeScript single-page application. The backend is an Express + Socket.IO API with PostgreSQL and Prisma.
+
+## CRUD and lifecycle guide
+
+CRUD actions depend on the resource and the user's role. Some records are deliberately managed through lifecycle actions instead of hard deletion.
+
+| Resource | Create | Read | Update | Delete or lifecycle |
+|---|---|---|---|---|
+| Courses | Lecturer or administrator creates a course; creator becomes a lecturer on it. | Course list, details, sessions, and (for managers) roster. | Managers update course details or archive/unarchive through the API. | No permanent course-delete action. Managers can add people by email or remove a student enrolment. |
+| Sessions | Lecturer creates a session inside a course. | Course session list, session view, attendance, and report. | Update session details and join settings. | No delete action. Start, pause, resume, and end the session instead. Join codes can be rotated. |
+| Polls | Lecturer creates a poll in a session. | Read poll details and, according to poll settings and role, results. | Edit a draft poll. | Delete draft polls only. Open, pause, resume, close, and reveal results for a poll as its lifecycle actions. Submitted answers are responses, not poll records. |
+| Users | Administrator creates accounts; users can register themselves. | Users see and update their own account; administrators can search and list accounts. | Users update their own profile/password. Administrators can change a display name, role, or active status. | No hard-delete action. Administrators deactivate accounts instead. |
+| Feedback | Student submits feedback once for a session. | Student can check whether they submitted; lecturers can view session feedback and summaries. | Lecturer can hide or unhide a comment. | No individual feedback delete action is exposed in the app. |
+
+### Typical workflows
+
+**Lecturer:** create a course, add existing accounts from the course's **People** tab, schedule a session, and start it when ready. Create polls in the session control room, open them for responses, and monitor results as they arrive. End the session to make a report available, then export results or feedback as CSV.
+
+**Student:** sign in, open **Join a lecture**, and enter the code shown by the lecturer (or open the QR link). Answer open polls, optionally update an answer when the poll permits it, and submit session feedback. The dashboard shows live sessions and participation history.
+
+**Administrator:** use **Admin → Users** to create accounts, search and filter the user list, update roles, and activate or deactivate accounts. **Admin → Audit** shows recorded administrative and application events.
+
+## API examples
+
+The API is rooted at `/api/v1`. These examples show the resource routes; write requests require an authenticated session and the CSRF token supplied by `GET /api/v1/auth/csrf`. The browser client handles session cookies and CSRF tokens automatically. Role and ownership checks are enforced by the API.
+
+| Action | Method and path |
+|---|---|
+| List or create courses | `GET` / `POST /api/v1/courses` |
+| Read or update a course | `GET` / `PATCH /api/v1/courses/:courseId` |
+| Add or remove course enrolments | `POST /api/v1/courses/:courseId/enrolments` / `DELETE /api/v1/courses/:courseId/enrolments/:userId` |
+| Create a session in a course | `POST /api/v1/courses/:courseId/sessions` |
+| Update a session or change its status | `PATCH /api/v1/sessions/:sessionId`; `POST /api/v1/sessions/:sessionId/{start,pause,resume,end}` |
+| List, create, or update session polls | `GET` / `POST /api/v1/sessions/:sessionId/polls`; `PUT /api/v1/polls/:pollId` |
+| Delete a draft poll or submit a response | `DELETE /api/v1/polls/:pollId`; `POST /api/v1/polls/:pollId/responses` |
+| Read report or export CSV | `GET /api/v1/sessions/:sessionId/report`; `GET /api/v1/sessions/:sessionId/export.csv?type=results` (or `type=feedback`) |
+
+## Local development
+
+Prerequisites: Node.js 22 or newer and a running PostgreSQL database. The repository does not include a Docker Compose file; configure the database yourself and set `DATABASE_URL` in the backend environment file.
+
+1. Copy the root `.env.example` to `backend/.env`.
+2. Set `DATABASE_URL` to your PostgreSQL database. Replace the placeholder `SESSION_SECRET` and `JOIN_CODE_KEY` with independent random values of at least 32 characters. For example, generate each with `openssl rand -base64 48`.
+3. In a terminal, install backend dependencies, apply migrations, optionally seed development data, and start the API:
 
 ```bash
-# 1. Secrets and database
-cp .env.example .env                      # used by docker compose; set POSTGRES_PASSWORD
-cp .env.example backend/.env              # used by the API; set SESSION_SECRET, JOIN_CODE_KEY, DATABASE_URL
-#    Generate secrets with:  openssl rand -base64 48
-#    DATABASE_URL must use the same user/password/db as POSTGRES_* in .env
-docker compose up -d postgres
-
-# 2. Backend (http://localhost:4000)
 cd backend
 npm ci
-npx prisma migrate deploy                 # applies prisma/migrations
-npm run db:seed                           # DEV ONLY: labelled test accounts + sample data
+npm run db:migrate
+npm run db:seed
 npm run dev
+```
 
-# 3. Frontend (http://localhost:5173) — in a second terminal
+4. In a second terminal, start the frontend:
+
+```bash
 cd frontend
 npm ci
 npm run dev
 ```
 
-Open <http://localhost:5173>. The Vite dev server proxies `/api` and `/socket.io` to the API so cookies, CSRF and the WebSocket Origin check behave exactly as in production.
+Open <http://localhost:5173>. The Vite development server proxies API and Socket.IO requests to the backend at `http://localhost:4000`.
 
-### Seeded development accounts (dev only)
+### Development seed accounts
 
-Password for every seeded account: `DevPassword!2026`
+Run `npm run db:seed` from `backend` to create sample data. The password for all seeded accounts is `DevPassword!2026`.
 
 | Role | Email |
 |---|---|
 | Administrator | `admin@lectures.test` |
 | Lecturer | `lecturer@lectures.test` |
-| Students | `student1@lectures.test` … `student6@lectures.test` |
+| Students | `student1@lectures.test` through `student6@lectures.test` |
 
-The seed prints a live demo join code (`DEMO42`); join codes expire (default 3 h; the seeded one 6 h), so create a fresh session or press **New code** once it lapses. The seed script refuses to run when `NODE_ENV=production`.
+The seed creates a sample course, a past session with poll responses and feedback, a live session, and an upcoming session. Its live join code is `DEMO42`; it expires after six hours. Seed data and the shared password are for local development only. The seed refuses to run when `NODE_ENV=production`.
 
-## Everyday commands
+## Useful commands
 
-| Where | Command | Purpose |
+| Directory | Command | Purpose |
 |---|---|---|
-| `backend` | `npm run dev` / `npm run build && npm start` | Run / build the API |
-| `backend` | `npm test` | 93 Vitest + Supertest + Socket.IO tests (needs a migrated test database, see [docs/TESTING.md](docs/TESTING.md)) |
-| `backend` | `npm run typecheck`, `npm run lint` | Static checks |
-| `frontend` | `npm run dev` / `npm run build` | Dev server / production bundle |
-| `frontend` | `npm test` | 21 Vitest + Testing Library tests |
-| `frontend` | `npm run e2e` | Playwright specs (see status: not yet executed) |
+| `backend` | `npm run dev` | Run API in watch mode |
+| `backend` | `npm run db:migrate` | Apply database migrations |
+| `backend` | `npm run db:seed` | Add development demo accounts and sample data |
+| `backend` | `npm test` | Run backend tests |
+| `backend` | `npm run typecheck` / `npm run lint` | Type-check / lint backend and tests |
+| `frontend` | `npm run dev` | Run Vite development server |
+| `frontend` | `npm test` | Run frontend tests |
+| `frontend` | `npm run e2e` | Run Playwright end-to-end tests |
+| `frontend` | `npm run build` | Type-check and build the frontend |
 
-## Production
+## Production notes
 
-A multi-stage `Dockerfile` builds the SPA and API into one non-root image (the API serves the SPA with a strict CSP). `docker compose --profile app up --build` runs postgres → one-shot `migrate` job → `app`. Production mode requires `FRONTEND_ORIGIN` to be an `https://` URL and uses `Secure` cookies, so it cannot be exercised over plain HTTP — use `npm run dev` locally. Put a TLS-terminating reverse proxy in front (enable WebSocket upgrade and sticky routing if you ever run several instances). **Migrations are a separate step and never run on app start.** Read [docs/SECURITY.md](docs/SECURITY.md) (checklist and known limitations) before going live.
-
-## Documentation
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data model, permission matrix, anonymity design
-- [docs/API.md](docs/API.md) — every REST endpoint: auth, role, validation, status codes, error format
-- [docs/REALTIME_EVENTS.md](docs/REALTIME_EVENTS.md) — Socket.IO contract and room authorization
-- [docs/SECURITY.md](docs/SECURITY.md) — controls, release checklist, **known limitations**
-- [docs/TESTING.md](docs/TESTING.md) — test strategy, how to run, what is and is not covered
-
-## Implementation status
-
-**Verified by running it in the build environment (Node 22, PostgreSQL 16):**
-
-- Backend: `tsc` clean, ESLint clean, **93/93 tests pass** against a real PostgreSQL database (auth/CSRF/session security, IDOR/BOLA and role boundaries, poll lifecycle, validation, idempotency and concurrency, anonymity isolation, exports/CSV injection, feedback, administration, Socket.IO authentication/room authorization/leakage/reconnection).
-- Frontend: `tsc` clean, ESLint clean, **21/21 component and client tests pass**, production build succeeds.
-- The compiled API boots with a production-only dependency install, serves the built SPA with the production CSP/HSTS, and a scripted lecturer + student journey over REST and WebSocket completed (login → join → open poll → answer → live results → close) with zero server errors.
-- `npm audit --omit=dev`: 0 vulnerabilities in both projects (transitive Prisma-CLI advisories pinned via `overrides`).
-
-**Written but NOT executed (no browser / Docker was available in the build environment):**
-
-- Playwright E2E and axe accessibility specs in `frontend/e2e` (type-checked and linted only). Expect to adjust selectors on first run.
-- `Dockerfile`, `docker-compose.yml`, and the CI workflow were not built or run. The runtime image's key assumption (production-only install boots and serves) was simulated locally.
-- No manual accessibility review (screen reader, zoom/reflow), no real-device mobile testing, and no load test (the spec's 300-concurrent-user target) was performed.
-
-**Deliberately different from, or missing relative to, the brief** — details in [docs/SECURITY.md](docs/SECURITY.md#known-limitations):
-
-- **Migration SQL is hand-written.** Prisma's schema engine could not be downloaded in the build sandbox, so `prisma/migrations/20261011000000_init/migration.sql` was written by hand to mirror `schema.prisma`, applied to PostgreSQL 16, and exercised by all 93 tests. `prisma migrate deploy` just applies it, but run `npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code` (needs a shadow DB) once on your machine to confirm there is no drift.
-- **shadcn/ui** components are hand-written in the shadcn style on Radix primitives (the shadcn CLI registry was unreachable). There is no `components.json`.
-- **Administrator MFA is not implemented.** Admin accounts rely on password + rate limiting.
-- **No email transport.** Password-reset emails go to a dev outbox/console only; in production the reset flow does not deliver mail until you supply a `Mailer`.
-- **Rate limiting, Socket.IO fan-out and presence are single-instance** (in memory). Redis is not wired in; add it before running more than one API instance.
-- Q&A queue, announcements, and a persistent notifications table (in the supplied spec package) are **not built**; "notifications" in the UI is a live-now list. In-app camera QR scanning is not built (the QR encodes a link that the phone camera opens).
-- Data-retention/purge jobs are **not automated** (deletion behaviour is defined by foreign keys; see ARCHITECTURE).
-- No OpenAPI document; see `docs/API.md`.
+Production requires valid, private secrets, an HTTPS `FRONTEND_ORIGIN`, and a secure deployment for PostgreSQL. Apply migrations as a deployment step; the API does not migrate the database on startup. The API can serve a built frontend when `SERVE_STATIC_DIR` is configured. Configure your hosting or reverse proxy for Socket.IO/WebSocket traffic. Password-reset delivery requires a mail transport to be configured; the repository does not include a production email provider.
