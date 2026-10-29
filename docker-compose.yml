@@ -1,0 +1,52 @@
+# Local development: `docker compose up -d postgres` is all you need; run the apps with npm.
+# Full stack in containers (API + built SPA):  docker compose --profile app up --build
+services:
+  postgres:
+    image: postgres:16-alpine   # pin a reviewed digest in production
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lfps}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-lecture_feedback}
+    ports:
+      - "127.0.0.1:5432:5432"   # loopback only; never publish the database publicly
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    profiles: ["app"]
+    build: { context: ., target: migrate }
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lfps}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lecture_feedback}?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["npx", "prisma", "migrate", "deploy"]
+
+  app:
+    profiles: ["app"]
+    build: { context: ., target: runtime }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lfps}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lecture_feedback}?schema=public
+      SERVE_STATIC_DIR: /app/public
+    ports:
+      - "127.0.0.1:4000:4000"   # put a TLS-terminating reverse proxy in front (WebSocket upgrade enabled)
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  pgdata:
