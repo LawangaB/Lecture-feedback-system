@@ -6,3 +6,4 @@ backend/src/generated
 frontend/playwright-report
 frontend/test-results
 *.log
+backend/coverage
