@@ -3,9 +3,14 @@ name: SonarQube
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: read
@@ -19,63 +24,102 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: lfps
-          POSTGRES_PASSWORD: dev_only_password
+          POSTGRES_USER: lfps_test
+          POSTGRES_PASSWORD: ci-only-test-password
           POSTGRES_DB: lecture_feedback_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U lfps -d lecture_feedback_test"
+          --health-cmd "pg_isready -U lfps_test -d lecture_feedback_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://lfps:dev_only_password@127.0.0.1:5432/lecture_feedback_test?schema=public
-      TEST_DATABASE_URL: postgresql://lfps:dev_only_password@127.0.0.1:5432/lecture_feedback_test?schema=public
+      DATABASE_URL: postgresql://lfps_test:ci-only-test-password@127.0.0.1:5432/lecture_feedback_test?schema=public
+      TEST_DATABASE_URL: postgresql://lfps_test:ci-only-test-password@127.0.0.1:5432/lecture_feedback_test?schema=public
       SESSION_SECRET: test-only-session-secret-0123456789abcdef-xxxxxxxx
       JOIN_CODE_KEY: test-only-join-code-key-0123456789abcdef-xxxxxxxx
       FRONTEND_ORIGIN: http://localhost:5173
       LOG_LEVEL: silent
 
     steps:
+      # 1. Checkout source code
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
+      # 2. Set up Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
 
+      # 3. Install backend dependencies
       - name: Install backend dependencies
         working-directory: backend
         run: npm ci
 
+      # 4. Generate Prisma Client
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      # 5. Apply database migrations
       - name: Apply Prisma migrations
         working-directory: backend
         run: npx prisma migrate deploy
 
+      # 6. Run backend tests and generate coverage
       - name: Backend tests with coverage
         working-directory: backend
-        run: npx vitest run --coverage --coverage.reporter=text --coverage.reporter=lcov
+        run: >
+          npx vitest run
+          --coverage
+          --coverage.reporter=text
+          --coverage.reporter=lcov
 
+      # 7. Install frontend dependencies
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
+      # 8. Run frontend tests and generate coverage
       - name: Frontend tests with coverage
         working-directory: frontend
-        run: npx vitest run --coverage --coverage.reporter=text --coverage.reporter=lcov
+        run: >
+          npx vitest run
+          --coverage
+          --coverage.reporter=text
+          --coverage.reporter=lcov
 
+      # 9. Verify coverage files exist
       - name: Verify coverage reports
         run: |
-          test -f backend/coverage/lcov.info
-          test -f frontend/coverage/lcov.info
+          test -s backend/coverage/lcov.info
+          test -s frontend/coverage/lcov.info
+          echo "Backend and frontend coverage reports found."
 
+      # 10. Check SonarQube authentication
+      # Only on trusted pushes, never external-fork PRs
+      - name: Verify SonarQube token
+        if: github.event_name == 'push'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::SONAR_TOKEN is missing."
+            echo "Add SONAR_TOKEN under repository Actions secrets."
+            exit 1
+          fi
+          echo "SONAR_TOKEN is configured."
+
+      # 11. Run SonarQube analysis
+      # PRs still execute tests and generate coverage
       - name: SonarQube Scan
+        if: github.event_name == 'push'
         uses: SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -83,3 +127,4 @@ jobs:
           args: >
             -Dsonar.organization=gayanviduranga95
             -Dsonar.projectKey=gayanviduranga95_Lecture-feedback-system
+            -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info,frontend/coverage/lcov.info
