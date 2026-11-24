@@ -1,32 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { listQuery, sessionParams, submitBody } from './feedback.schemas.ts';
 import type { Limiters } from '../../middleware/rateLimit.ts';
 import { currentUser } from '../../middleware/auth.ts';
 import { validate } from '../../middleware/validate.ts';
 import * as svc from './feedback.service.ts';
-
-const sessionParams = z.object({ sessionId: z.string().uuid() });
-const rating = z.number().int().min(1).max(5);
-const submitBody = z
-  .object({
-    ratings: z.object({ CLARITY: rating.optional(), PACE: rating.optional(), ENGAGEMENT: rating.optional(), MATERIALS: rating.optional() }).strict().default({}),
-    comment: z.string().max(2000).optional(),
-    anonymous: z.boolean(),
-  })
-  .strict();
-const bool = z.enum(['true', 'false']).transform((v) => v === 'true');
-const listQuery = z
-  .object({
-    dimension: z.enum(['CLARITY', 'PACE', 'ENGAGEMENT', 'MATERIALS']).optional(),
-    minRating: z.coerce.number().int().min(1).max(5).optional(),
-    maxRating: z.coerce.number().int().min(1).max(5).optional(),
-    anonymous: bool.optional(),
-    hasComment: bool.optional(),
-    includeHidden: bool.optional(),
-    page: z.coerce.number().int().min(1).default(1),
-    pageSize: z.coerce.number().int().min(1).max(100).default(25),
-  })
-  .strict();
 
 export function feedbackRouter(limiters: Limiters) {
   const r = Router();
