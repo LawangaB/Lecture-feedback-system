@@ -7,3 +7,4 @@ frontend/playwright-report
 frontend/test-results
 *.log
 backend/coverage
+frontend/coverage
