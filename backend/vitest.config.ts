@@ -1,4 +1,8 @@
+import 'dotenv/config';
 import { defineConfig } from 'vitest/config';
+import { requireTestDatabaseUrl } from './src/config/test-database.ts';
+
+const testDatabaseUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
 
 export default defineConfig({
   test: {
@@ -10,7 +14,7 @@ export default defineConfig({
     hookTimeout: 30_000,
     env: {
       NODE_ENV: 'test',
-      DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgresql://lfps:dev_only_password@127.0.0.1:5432/lecture_feedback_test?schema=public',
+      DATABASE_URL: testDatabaseUrl,
       SESSION_SECRET: 'test-only-session-secret-0123456789abcdef-xxxxxxxx',
       JOIN_CODE_KEY: 'test-only-join-code-key-0123456789abcdef-xxxxxxxx',
       FRONTEND_ORIGIN: 'http://localhost:5173',

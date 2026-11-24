@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import request from 'supertest';
 import { createApp } from '../src/app.ts';
+import { requireTestDatabaseUrl } from '../src/config/test-database.ts';
 import { prisma } from '../src/db.ts';
 import { hashPassword } from '../src/utils/password.ts';
 
@@ -8,6 +9,7 @@ export const PW = 'Correct-Horse-Battery-9';
 let cachedHash: string | undefined;
 
 export async function resetDb() {
+  requireTestDatabaseUrl(process.env.DATABASE_URL);
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE "User","Course","AuditLog","user_sessions" RESTART IDENTITY CASCADE`,
   );
