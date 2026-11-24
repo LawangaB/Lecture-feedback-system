@@ -1,9 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { QrCode } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import { PageHeader } from '@/components/states';
 import { Button } from '@/components/ui/button';
@@ -20,16 +21,24 @@ export function JoinForm({ initialCode = '', autoSubmit = false, buttonVariant =
   const form = useForm({ resolver: zodResolver(z.object({ code: z.string().trim().min(4, 'Enter the code shown on the lecturer\u2019s screen.').max(16) })), defaultValues: { code: initialCode } });
   const submit = form.handleSubmit(async ({ code }) => {
     setError(null);
-    try {
-      const { session } = await api<{ session: Session }>('/sessions/join', { method: 'POST', body: { code } });
-      void qc.invalidateQueries({ queryKey: ['my-sessions'] });
-      navigate(`/sessions/${session.id}`);
-    } catch (e) { setError(errorMessage(e)); }
+    const { session } = await api<{ session: Session }>('/sessions/join', { method: 'POST', body: { code } });
+    qc.invalidateQueries({ queryKey: ['my-sessions'] }).catch(() => {
+      toast.error('You joined the lecture, but your sessions could not be refreshed.');
+    });
+    navigate(`/sessions/${session.id}`);
   });
+  const onSubmit = (event?: FormEvent<HTMLFormElement>) => {
+    submit(event).catch((e: unknown) => setError(errorMessage(e)));
+  };
   const fired = useRef(false);
-  useEffect(() => { if (autoSubmit && initialCode && !fired.current) { fired.current = true; void submit(); } }, [autoSubmit, initialCode, submit]);
+  useEffect(() => {
+    if (autoSubmit && initialCode && !fired.current) {
+      fired.current = true;
+      submit().catch((e: unknown) => setError(errorMessage(e)));
+    }
+  }, [autoSubmit, initialCode, submit]);
   return (
-    <form noValidate onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-start">
+    <form noValidate onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-start">
       <div className="flex-1">
         <Field id="join-code" label="Session code" error={form.formState.errors.code?.message ?? error ?? undefined} className="[&>label]:sr-only">
           {(p) => <Input {...p} autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder="e.g. AB7KQ9" className="h-12 text-center text-lg font-semibold uppercase tracking-[0.3em]" maxLength={16} {...form.register('code')} />}
