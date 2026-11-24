@@ -2,14 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => {
   const listeners = new Map<string, ((error?: Error) => void)[]>();
+  let startupEvent: 'listening' | 'error' = 'listening';
   const server = {
     once: vi.fn((event: string, listener: (error?: Error) => void) => listeners.set(event, [...(listeners.get(event) ?? []), listener])),
     off: vi.fn((event: string, listener: (error?: Error) => void) => listeners.set(event, (listeners.get(event) ?? []).filter((candidate) => candidate !== listener))),
     emit: (event: string, error?: Error) => (listeners.get(event) ?? []).forEach((listener) => listener(error)),
     listen: vi.fn(),
   };
-  server.listen = vi.fn((_: number) => queueMicrotask(() => server.emit('listening')));
-  return {
+  server.listen = vi.fn((_: number) => queueMicrotask(() => server.emit(startupEvent, new Error('port unavailable'))));
+  const state = {
     server,
     createServer: vi.fn(() => server),
     createApp: vi.fn(() => ({ marker: 'app' })),
@@ -19,7 +20,16 @@ const state = vi.hoisted(() => {
     createSocketServer: vi.fn(),
     startPollSweeper: vi.fn(() => 1 as unknown as NodeJS.Timeout),
     info: vi.fn(),
+    fatal: vi.fn(),
   };
+  return Object.assign(state, {
+    reset(event: 'listening' | 'error') {
+      startupEvent = event;
+      listeners.clear();
+      Object.values(state).forEach((value) => { if (typeof value === 'function' && 'mockClear' in value) value.mockClear(); });
+      state.createSocketServer.mockReturnValue({ close: state.closeSocket });
+    },
+  });
 });
 
 state.createSocketServer.mockReturnValue({ close: state.closeSocket });
@@ -31,7 +41,7 @@ vi.mock('../src/db.ts', () => ({ prisma: { $disconnect: state.disconnectPrisma }
 vi.mock('../src/middleware/session.ts', () => ({ sessionMiddleware: {}, sessionPool: { end: state.endSessionPool } }));
 vi.mock('../src/modules/polls/poll.service.ts', () => ({ startPollSweeper: state.startPollSweeper }));
 vi.mock('../src/realtime/socket.ts', () => ({ createSocketServer: state.createSocketServer }));
-vi.mock('../src/utils/logger.ts', () => ({ logger: { info: state.info, error: vi.fn(), fatal: vi.fn() } }));
+vi.mock('../src/utils/logger.ts', () => ({ logger: { info: state.info, error: vi.fn(), fatal: state.fatal } }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -56,5 +66,19 @@ describe('server startup', () => {
     expect(state.closeSocket).toHaveBeenCalledOnce();
     expect(state.disconnectPrisma).toHaveBeenCalledOnce();
     expect(state.endSessionPool).toHaveBeenCalledOnce();
+  });
+
+  it('cleans up resources and records startup failures without exiting immediately', async () => {
+    const originalExitCode = process.exitCode;
+    state.reset('error');
+    vi.resetModules();
+
+    await import('../src/server.ts');
+    await vi.waitFor(() => expect(state.fatal).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), 'API server failed to start'));
+    expect(state.closeSocket).toHaveBeenCalledOnce();
+    expect(state.disconnectPrisma).toHaveBeenCalledOnce();
+    expect(state.endSessionPool).toHaveBeenCalledOnce();
+    expect(process.exitCode).toBe(1);
+    process.exitCode = originalExitCode;
   });
 });
