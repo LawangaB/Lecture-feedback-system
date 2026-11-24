@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -21,13 +21,18 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from ?? '/';
   const [error, setError] = useState<string | null>(null);
   const form = useForm({ resolver: zodResolver(z.object({ email, password: z.string().min(1, 'Enter your password.') })), defaultValues: { email: '', password: '' } });
+  const submit = form.handleSubmit(async (v) => {
+    setError(null);
+    await login(v.email, v.password);
+    navigate(from, { replace: true });
+  });
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    submit(event).catch((e: unknown) => setError(errorMessage(e)));
+  };
   if (user) return <Navigate to={from} replace />;
   return (
     <AuthLayout title="Welcome back" subtitle="Sign in to your lectures, polls and feedback.">
-      <form noValidate className="space-y-4" onSubmit={form.handleSubmit(async (v) => {
-        setError(null);
-        try { await login(v.email, v.password); navigate(from, { replace: true }); } catch (e) { setError(errorMessage(e)); }
-      })}>
+      <form noValidate className="space-y-4" onSubmit={onSubmit}>
         <FormError message={error} />
         <Field id="email" label="Email" error={form.formState.errors.email?.message}>{(p) => <Input {...p} type="email" autoComplete="email" inputMode="email" {...form.register('email')} />}</Field>
         <Field id="password" label="Password" error={form.formState.errors.password?.message}>{(p) => <PasswordInput {...p} autoComplete="current-password" {...form.register('password')} />}</Field>
@@ -47,13 +52,18 @@ export function RegisterPage() {
     resolver: zodResolver(z.object({ displayName: z.string().trim().min(1, 'Enter your name.').max(100), email, password: newPassword, confirm: z.string() }).refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match.' })),
     defaultValues: { displayName: '', email: '', password: '', confirm: '' },
   });
+  const submit = form.handleSubmit(async (v) => {
+    setError(null);
+    await register(v.email, v.password, v.displayName);
+    navigate('/', { replace: true });
+  });
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    submit(event).catch((e: unknown) => setError(errorMessage(e)));
+  };
   if (user) return <Navigate to="/" replace />;
   return (
     <AuthLayout title="Create your account" subtitle="Student accounts are self-service. Lecturers are set up by an administrator.">
-      <form noValidate className="space-y-4" onSubmit={form.handleSubmit(async (v) => {
-        setError(null);
-        try { await register(v.email, v.password, v.displayName); navigate('/', { replace: true }); } catch (e) { setError(errorMessage(e)); }
-      })}>
+      <form noValidate className="space-y-4" onSubmit={onSubmit}>
         <FormError message={error} />
         <Field id="name" label="Full name" error={form.formState.errors.displayName?.message}>{(p) => <Input {...p} autoComplete="name" {...form.register('displayName')} />}</Field>
         <Field id="email" label="Email" error={form.formState.errors.email?.message}>{(p) => <Input {...p} type="email" autoComplete="email" inputMode="email" {...form.register('email')} />}</Field>
@@ -70,6 +80,14 @@ export function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const form = useForm({ resolver: zodResolver(z.object({ email })), defaultValues: { email: '' } });
+  const submit = form.handleSubmit(async (v) => {
+    setError(null);
+    await api('/auth/forgot-password', { method: 'POST', body: v });
+    setSent(true);
+  });
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    submit(event).catch((e: unknown) => setError(errorMessage(e)));
+  };
   return (
     <AuthLayout title="Reset your password" subtitle="Enter your email and we'll send a reset link if an account exists.">
       {sent ? (
@@ -79,10 +97,7 @@ export function ForgotPasswordPage() {
           <Link to="/login" className="font-medium text-primary hover:underline">Back to sign in</Link>
         </div>
       ) : (
-        <form noValidate className="space-y-4" onSubmit={form.handleSubmit(async (v) => {
-          setError(null);
-          try { await api('/auth/forgot-password', { method: 'POST', body: v }); setSent(true); } catch (e) { setError(errorMessage(e)); }
-        })}>
+        <form noValidate className="space-y-4" onSubmit={onSubmit}>
           <FormError message={error} />
           <Field id="email" label="Email" error={form.formState.errors.email?.message}>{(p) => <Input {...p} type="email" autoComplete="email" {...form.register('email')} />}</Field>
           <Button type="submit" className="w-full" size="lg" loading={form.formState.isSubmitting}>Send reset link</Button>
@@ -102,13 +117,23 @@ export function ResetPasswordPage() {
     resolver: zodResolver(z.object({ newPassword, confirm: z.string() }).refine((v) => v.newPassword === v.confirm, { path: ['confirm'], message: 'Passwords do not match.' })),
     defaultValues: { newPassword: '', confirm: '' },
   });
+  const submit = form.handleSubmit(async (v) => {
+    setError(null);
+    await api('/auth/reset-password', { method: 'POST', body: { token, newPassword: v.newPassword } });
+    toast.success('Password updated. Please sign in.');
+    navigate('/login', { replace: true });
+  });
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    submit(event).catch((e: unknown) => setError(
+      e instanceof ApiError && e.code === 'INVALID_RESET_TOKEN'
+        ? 'This link is invalid or has expired. Request a new one.'
+        : errorMessage(e),
+    ));
+  };
   if (!token) return <AuthLayout title="Link not valid"><p className="text-sm">This reset link is missing its token. <Link className="text-primary hover:underline" to="/forgot-password">Request a new one</Link>.</p></AuthLayout>;
   return (
     <AuthLayout title="Choose a new password" subtitle="Signing in on other devices will be ended.">
-      <form noValidate className="space-y-4" onSubmit={form.handleSubmit(async (v) => {
-        setError(null);
-        try { await api('/auth/reset-password', { method: 'POST', body: { token, newPassword: v.newPassword } }); toast.success('Password updated. Please sign in.'); navigate('/login', { replace: true }); } catch (e) { setError(e instanceof ApiError && e.code === 'INVALID_RESET_TOKEN' ? 'This link is invalid or has expired. Request a new one.' : errorMessage(e)); }
-      })}>
+      <form noValidate className="space-y-4" onSubmit={onSubmit}>
         <FormError message={error} />
         <Field id="np" label="New password" hint="At least 10 characters." error={form.formState.errors.newPassword?.message}>{(p) => <PasswordInput {...p} autoComplete="new-password" {...form.register('newPassword')} />}</Field>
         <Field id="cp" label="Confirm new password" error={form.formState.errors.confirm?.message}>{(p) => <PasswordInput {...p} autoComplete="new-password" {...form.register('confirm')} />}</Field>
