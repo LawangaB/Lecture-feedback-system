@@ -127,4 +127,8 @@ jobs:
           args: >
             -Dsonar.organization=gayanviduranga95
             -Dsonar.projectKey=gayanviduranga95_Lecture-feedback-system
+            -Dsonar.sources=backend/src,frontend/src
+            -Dsonar.tests=backend/tests,frontend/src/__tests__
+            -Dsonar.test.inclusions=backend/tests/**,frontend/src/__tests__/**
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/generated/**,backend/tests/**,frontend/src/__tests__/**,backend/prisma.config.ts,backend/vitest.config.ts
             -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info,frontend/coverage/lcov.info
