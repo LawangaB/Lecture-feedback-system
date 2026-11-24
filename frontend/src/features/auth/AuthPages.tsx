@@ -24,7 +24,7 @@ export function LoginPage() {
   const submit = form.handleSubmit(async (v) => {
     setError(null);
     await login(v.email, v.password);
-    navigate(from, { replace: true });
+    void navigate(from, { replace: true });
   });
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     submit(event).catch((e: unknown) => setError(errorMessage(e)));
@@ -55,7 +55,7 @@ export function RegisterPage() {
   const submit = form.handleSubmit(async (v) => {
     setError(null);
     await register(v.email, v.password, v.displayName);
-    navigate('/', { replace: true });
+    void navigate('/', { replace: true });
   });
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     submit(event).catch((e: unknown) => setError(errorMessage(e)));
@@ -121,7 +121,7 @@ export function ResetPasswordPage() {
     setError(null);
     await api('/auth/reset-password', { method: 'POST', body: { token, newPassword: v.newPassword } });
     toast.success('Password updated. Please sign in.');
-    navigate('/login', { replace: true });
+    void navigate('/login', { replace: true });
   });
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     submit(event).catch((e: unknown) => setError(

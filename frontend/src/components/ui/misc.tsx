@@ -21,7 +21,7 @@ export function Progress({ value, className, label }: { value: number; className
 }
 
 export const Table = ({ className, ...p }: React.TableHTMLAttributes<HTMLTableElement>) => (
-  <div className="w-full overflow-x-auto rounded-md border border-border" tabIndex={0} role="region" aria-label="Scrollable table">
+  <div className="w-full overflow-x-auto rounded-md border border-border" role="region" aria-label="Scrollable table">
     <table className={cn('w-full min-w-[36rem] text-left text-sm', className)} {...p} />
   </div>
 );
