@@ -3,7 +3,9 @@ import { twMerge } from 'tailwind-merge';
 
 export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
 
-export function formatDateTime(iso: string | null | undefined, opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' }) {
+const defaultDateTimeFormatOptions: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' };
+
+export function formatDateTime(iso: string | null | undefined, opts: Intl.DateTimeFormatOptions = defaultDateTimeFormatOptions) {
   return iso ? new Intl.DateTimeFormat(undefined, opts).format(new Date(iso)) : '—';
 }
 

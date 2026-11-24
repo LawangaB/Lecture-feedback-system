@@ -63,11 +63,11 @@ export function FeedbackForm({ sessionId }: { sessionId: string }) {
           <Field id="fb-comment" label="Comments (optional)" hint={`${comment.length}/2000`}>{(p) => <Textarea {...p} value={comment} maxLength={2000} onChange={(e) => setComment(e.target.value)} placeholder="What worked? What should be clearer?" />}</Field>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Who can see this?</legend>
-            <label className={cn('flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm', anonymous ? 'border-primary bg-primary-soft' : 'border-border')}>
+            <label aria-label="Anonymous" className={cn('flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm', anonymous ? 'border-primary bg-primary-soft' : 'border-border')}>
               <input type="radio" name="anon" checked={anonymous} onChange={() => setAnonymous(true)} className="mt-1" />
               <span><span className="flex items-center gap-1.5 font-medium"><ShieldCheck className="h-4 w-4" aria-hidden />Anonymous</span><span className="text-muted-foreground">Your lecturer sees your answers but not your name, and no time is recorded.</span></span>
             </label>
-            <label className={cn('flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm', !anonymous ? 'border-primary bg-primary-soft' : 'border-border')}>
+            <label aria-label="Share my name" className={cn('flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm', !anonymous ? 'border-primary bg-primary-soft' : 'border-border')}>
               <input type="radio" name="anon" checked={!anonymous} onChange={() => setAnonymous(false)} className="mt-1" />
               <span><span className="flex items-center gap-1.5 font-medium"><UserRound className="h-4 w-4" aria-hidden />Share my name</span><span className="text-muted-foreground">Your lecturer sees who sent it.</span></span>
             </label>

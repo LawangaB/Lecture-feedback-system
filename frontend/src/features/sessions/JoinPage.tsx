@@ -25,7 +25,7 @@ export function JoinForm({ initialCode = '', autoSubmit = false, buttonVariant =
     qc.invalidateQueries({ queryKey: ['my-sessions'] }).catch(() => {
       toast.error('You joined the lecture, but your sessions could not be refreshed.');
     });
-    navigate(`/sessions/${session.id}`);
+    void navigate(`/sessions/${session.id}`);
   });
   const onSubmit = (event?: FormEvent<HTMLFormElement>) => {
     submit(event).catch((e: unknown) => setError(errorMessage(e)));
