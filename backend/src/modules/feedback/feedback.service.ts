@@ -62,14 +62,32 @@ export interface FeedbackFilters {
 
 export async function listFeedback(user: AuthUser, sessionId: string, f: FeedbackFilters) {
   await loadSessionAsLecturer(user, sessionId);
-  const where: Prisma.FeedbackEntryWhereInput = {
-    sessionId,
-    ...(f.anonymous === undefined ? {} : { userId: f.anonymous ? null : { not: null } }),
-    ...(f.hasComment ? { comment: { not: null } } : {}),
-    ...(f.dimension || f.minRating || f.maxRating
-      ? { ratings: { some: { ...(f.dimension ? { dimension: f.dimension } : {}), value: { gte: f.minRating ?? 1, lte: f.maxRating ?? 5 } } } }
-      : {}),
-  };
+const where: Prisma.FeedbackEntryWhereInput = {
+  sessionId,
+
+  ...(f.anonymous === undefined
+    ? {}
+    : { userId: f.anonymous ? null : { not: null } }),
+
+  // Corrected comment filter
+  ...(f.hasComment === undefined
+    ? {}
+    : { comment: f.hasComment ? { not: null } : null }),
+
+  ...(f.dimension || f.minRating || f.maxRating
+    ? {
+        ratings: {
+          some: {
+            ...(f.dimension ? { dimension: f.dimension } : {}),
+            value: {
+              gte: f.minRating ?? 1,
+              lte: f.maxRating ?? 5
+            }
+          }
+        }
+      }
+    : {}),
+};
   const [total, rows] = await Promise.all([
     prisma.feedbackEntry.count({ where }),
     prisma.feedbackEntry.findMany({
