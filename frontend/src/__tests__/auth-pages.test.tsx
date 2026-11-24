@@ -1,10 +1,10 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from '@/components/layout/AppShell';
 import { AuthProvider, useAuth } from '@/features/auth/AuthContext';
-import { LoginPage, RegisterPage } from '@/features/auth/AuthPages';
+import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from '@/features/auth/AuthPages';
 import { json, mockApi, renderWithProviders } from './helpers';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -97,5 +97,74 @@ describe('register page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
     expect(await screen.findByText('Use at least 10 characters.')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('Password')).toHaveAttribute('aria-invalid', 'true'));
+  });
+
+  it('creates an account and navigates to the signed-in page', async () => {
+    const { calls } = mockApi(
+      meUnauthed,
+      (url) => (url.endsWith('/auth/register') ? json({ user: { id: 'u2', email: 'sam@uni.test', displayName: 'Sam', role: 'STUDENT' }, csrfToken: 'registered-csrf' }) : undefined),
+    );
+    renderWithProviders(
+      <AuthProvider><Routes><Route path="/register" element={<RegisterPage />} /><Route path="/" element={<SignedInPage />} /></Routes></AuthProvider>,
+      '/register',
+    );
+    await userEvent.type(await screen.findByLabelText('Full name'), 'Sam');
+    await userEvent.type(screen.getByLabelText('Email'), 'sam@uni.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'a-secure-passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'a-secure-passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(await screen.findByText('sam@uni.test')).toBeInTheDocument();
+    expect(calls.find((call) => call.url.endsWith('/auth/register'))?.body).toEqual({ email: 'sam@uni.test', password: 'a-secure-passphrase', displayName: 'Sam' });
+  });
+
+  it('shows the API error when registration is rejected', async () => {
+    mockApi(meUnauthed, (url) => (url.endsWith('/auth/register') ? json({ error: { code: 'EMAIL_TAKEN', message: 'An account already uses this email.' } }, 409) : undefined));
+    renderWithProviders(<AuthProvider><RegisterPage /></AuthProvider>);
+    await userEvent.type(await screen.findByLabelText('Full name'), 'Sam');
+    await userEvent.type(screen.getByLabelText('Email'), 'sam@uni.test');
+    await userEvent.type(screen.getByLabelText('Password'), 'a-secure-passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'a-secure-passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('An account already uses this email.');
+  });
+});
+
+describe('password recovery pages', () => {
+  it('sends a reset request and replaces the form with confirmation', async () => {
+    const { calls } = mockApi((url) => (url.endsWith('/auth/forgot-password') ? json({ ok: true }) : undefined));
+    renderWithProviders(<ForgotPasswordPage />);
+    await userEvent.type(screen.getByLabelText('Email'), 'student@uni.test');
+    await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Check your inbox');
+    expect(calls.find((call) => call.url.endsWith('/auth/forgot-password'))?.body).toEqual({ email: 'student@uni.test' });
+  });
+
+  it('shows the reset-token error and handles an invalid reset link', async () => {
+    mockApi((url) => (url.endsWith('/auth/reset-password') ? json({ error: { code: 'INVALID_RESET_TOKEN', message: 'ignored' } }, 400) : undefined));
+    const { rerender } = renderWithProviders(<ResetPasswordPage />, '/reset-password?token=expired');
+    await userEvent.type(screen.getByLabelText('New password'), 'a-secure-passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm new password'), 'a-secure-passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Update password' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('This link is invalid or has expired. Request a new one.');
+    rerender(<MemoryRouter initialEntries={['/reset-password']}><ResetPasswordPage /></MemoryRouter>);
+    expect(screen.getByText('Link not valid')).toBeInTheDocument();
+  });
+
+  it('updates the password and returns to sign in', async () => {
+    mockApi((url) => (url.endsWith('/auth/reset-password') ? json({ ok: true }) : undefined));
+    renderWithProviders(<Routes><Route path="/reset-password" element={<ResetPasswordPage />} /><Route path="/login" element={<p>Signed in again</p>} /></Routes>, '/reset-password?token=fresh');
+    await userEvent.type(screen.getByLabelText('New password'), 'a-secure-passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm new password'), 'a-secure-passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Update password' }));
+    expect(await screen.findByText('Signed in again')).toBeInTheDocument();
+  });
+
+  it('shows a general error when resetting fails for a reason other than the token', async () => {
+    mockApi((url) => (url.endsWith('/auth/reset-password') ? json({ error: { code: 'RATE_LIMITED', message: 'Please wait before trying again.' } }, 429) : undefined));
+    renderWithProviders(<ResetPasswordPage />, '/reset-password?token=fresh');
+    await userEvent.type(screen.getByLabelText('New password'), 'a-secure-passphrase');
+    await userEvent.type(screen.getByLabelText('Confirm new password'), 'a-secure-passphrase');
+    await userEvent.click(screen.getByRole('button', { name: 'Update password' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Please wait before trying again.');
   });
 });
